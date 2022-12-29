@@ -1,0 +1,1241 @@
+---
+title: "Advanced Econometrics Project"
+author: "Mattia Elezi"
+date: "05/05/2022"
+output:
+  pdf_document: 
+    toc: yes
+    toc_depth: 2
+    fig_width: 9
+    fig_height: 7.5
+  html_document:
+    toc: yes
+    toc_depth: 2
+    number_sections: no
+---
+
+Goldsmiths College, University of London.
+
+Advanced Econometrics.
+
+
+
+# Introduction
+
+This project relies on various statistical methods to provide empirical content on the economic relationship between the Capacity Utilisation Rate and the Inflation Rate of the USA. Indeed, Inflation is highly correlated with the nominal interest rate as when inflation rises, the central bank raises the nominal interest rate to counter it, thus reducing the growth rate of GDP to maintain inflation at acceptable levels for economic functionality. However, the Federal Reserve ends up reducing both demand and supply in the process and, thus, capacity utilisation decreases. Initially, the project analyses the trend and correlation of the variables and collects evidence on the possible presence of unit roots in the variables in levels and in first differences through the ADF, PP, and KPSS tests. Afterwards, the long-run relationship (cointegration) between the two series is analysed through the Engle-Granger and Johansen Tests. The subsequent statistical method of the projects is the ARDL model testing how Capacity Utilisation is adapting in response to Inflation, but the model is not correctly specified. Therefore, as cointegration test results appear to be ambiguous, and as there is evidence of the absence of unit roots in the variables in first differences, the Bivariate VAR Model in first differences was computed, followed by the Granger Causality test, Cholesky decompositions for orthogonal errors, Impulse Response Functions (IRFs), and VAR prediction. Finally, a forecast of inflation in the next 10 months is constructed through the ARIMA model, and a within forecast through the SARIMA model is compared to it.
+
+```{r, warning=FALSE, message=FALSE}
+
+library(forecast)         
+library(tseries)          
+library(nlme)             
+library(pdfetch)          
+library(zoo)              
+library(urca)             
+library(vars)             
+library(car)              
+library(dynlm)          
+library(tsDyn)            
+library(gets)             
+library(readxl)           
+library(aod)              
+library(aTSA)             
+library(rmarkdown)        
+library(tinytex)          
+
+
+rm(list=ls())
+
+```
+
+# Dataset Properties
+
+The dataset for this project is comprised of TCU and Inflation Rate with 663 values in levels and 662 in first differences from 01/1967 to 04/2022 and from 02/1967 to 04/2020 respectively, obtained from the Federal Reserve Economic Data (FRED). 
+
+The Consumer Price Index for All Urban Consumers (CPIAUCSL) is a price index of a basket of goods and services paid by urban consumers. Percent changes in the price index measure the inflation rate between any two time periods. The CPI is used to derive the monthly inflation rate correctly calculated year-on-year and aligned to the properties of the TCU data. 
+
+```{r, warning=FALSE, message=FALSE}
+
+CPI = pdfetch_FRED("CPIAUCSL")
+names(CPI) = "CPI"
+
+Inflation = diff(log(CPI), lag = 12) * 100                       
+names(Inflation) = "Inflation"
+
+Inflation = ts(Inflation, start=c(1947, 1), frequency=12)         
+Inflation = na.omit(Inflation)
+                                    
+```
+
+Capacity Utilisation: Total Industry (TCU) is the amount of capacity being used from the total available capacity to produce demanded finished goods and services. It is the percentage of resources used by corporations and factories to produce goods in manufacturing, mining, and electric and gas utilities for all facilities located in the USA. 
+
+
+```{r, warning=FALSE, message=FALSE}
+
+
+TCU = pdfetch_FRED("TCU")
+names(TCU) = "TCU"
+TCU = ts(TCU, start=c(1967, 1), frequency=12)
+
+
+data.set = na.omit(
+           ts.intersect(
+
+	   Inflation,
+	   TCU, 
+
+           dframe=TRUE))
+
+
+Inflation   = ts( data.set$Inflation,    start=c(1967, 1),  frequency=12)
+TCU         = ts( data.set$TCU,          start=c(1967, 1),  frequency=12)
+
+
+data.set = ts(data.set, start=c(1967, 1), frequency=12)   
+	
+```
+
+# Variables in Levels
+
+## Trend and Correlation Plots in Levels
+
+```{r, warning=FALSE, message=FALSE}
+
+par(mfrow=c(3,1))
+
+plot(Inflation,
+main = "US Monthly Inflation",
+xlab = "Year",
+ylab = "%")
+plot(TCU,
+main = "US Monthly TCU",
+xlab = "Year",
+ylab = "%")
+plot(data.set, 
+main = "US Monthly Inflation and TCU",
+xlab = "year",
+ylab = "%",
+plot.type="single", col = 1:ncol(data.set))
+legend("topright", colnames(data.set), col=1:ncol(data.set), lty=1, cex=.65)
+
+
+```
+
+As it can be inferred from the plots, there is a graphical indication of the presence of a unit root in both series in levels as the respective means of the stochastic processes appear to be decreasing and not reverting over time. Furthermore, the plots suggest cointegration as the series seem to follow a similar trend.
+
+```{r, warning=FALSE, message=FALSE}
+
+cor(Inflation, TCU)
+
+```
+
+Inflation and TCU are positively correlated with a p-value of 0.36.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(Inflation ~ TCU,
+pch = 16, col = 2,
+main = "Correlation between US Monthly Inflation and TCU",
+xlab = "Inflation",
+ylab = "TCU")
+lm_Inflation <- lm(Inflation ~ TCU) 
+abline(coef(lm_Inflation), lwd = 2)
+
+```
+
+The moderate correlation between the two variables is represented in the plot above. Correlation is more prominent below the Line of Best Fit.
+
+# Variables in First Differences 
+
+As the initial analysis of the variables in levels has been conducted, it is now time to observe them in first differences. A dataset in first differences must be created for such purpose.
+
+```{r, warning=FALSE, message=FALSE}
+
+
+Inflation    =  diff(Inflation)
+TCU          =  diff(TCU)
+
+
+
+data.set = na.omit(
+           ts.intersect(
+
+	   Inflation,
+	   TCU, 
+
+           dframe=TRUE))
+
+
+Inflation   = ts( data.set$Inflation,    start=c(1967, 2),  frequency=12)
+TCU         = ts( data.set$TCU,          start=c(1967, 2),  frequency=12)
+
+  data.set = ts(data.set, start=c(1967, 2), frequency=12)  
+
+```
+
+## Trend and Correlation Plots in First Differences
+
+```{r, warning=FALSE, message=FALSE}
+
+par(mfrow=c(3,1))
+
+plot(Inflation,
+main = "US Monthly Inflation in First Differences",
+xlab = "Year",
+ylab = "%")
+plot(TCU,
+main = "US Monthly TCU in First Differences",
+xlab = "Year",
+ylab = "%")
+plot(data.set, 
+main = "US Monthly Inflation and TCU in First Differences",
+xlab = "year",
+ylab = "%",
+plot.type="single", col = 1:ncol(data.set))
+legend("bottomleft", colnames(data.set), col=1:ncol(data.set), lty=1, cex=.65)
+
+```
+
+As it can be inferred from the plots, there is a graphical indication of the absence of a unit root in both series in first differences as the respective means of the possibly stationary processes appear to be reverting over time.
+
+```{r, warning=FALSE, message=FALSE}
+
+cor(Inflation, TCU)
+
+```
+
+Inflation and TCU are positively correlated in first differences with a p-value of 0.19.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(Inflation ~ TCU,
+pch = 16, col = 2,
+main = "Correlation between US Monthly Inflation and TCU in First Differences",
+xlab = "Inflation",
+ylab = "TCU")
+lm_Inflation <- lm(Inflation ~ TCU) 
+abline(coef(lm_Inflation), lwd = 2)
+
+```
+
+The weaker correlation between the two variables in first differences is represented in the plot above.
+
+# Unit Root Tests
+
+## Dataset in Levels for Unit Root Tests
+
+The first step is to convert the dataset from first differences to its initial values in levels.
+
+```{r, warning=FALSE, message=FALSE}
+
+CPI = pdfetch_FRED("CPIAUCSL")
+names(CPI) = "CPI"
+
+Inflation = diff(log(CPI), lag = 12) * 100                        
+names(Inflation) = "Inflation"
+
+Inflation = ts(Inflation, start=c(1947, 1), frequency=12)         
+Inflation = na.omit(Inflation)
+
+TCU = pdfetch_FRED("TCU")
+names(TCU) = "TCU"
+TCU = ts(TCU, start=c(1967, 1), frequency=12)
+
+
+data.set = na.omit(
+           ts.intersect(
+
+	   Inflation,
+	   TCU, 
+
+           dframe=TRUE))
+
+
+Inflation   = ts( data.set$Inflation,    start=c(1967, 1),  frequency=12)
+TCU         = ts( data.set$TCU,          start=c(1967, 1),  frequency=12)
+
+
+
+data.set = ts(data.set, start=c(1967, 1), frequency=12)   
+	
+```
+## Plots of the Lag Correlation
+
+The plot shows the correlation of the variable with itself in the timespan of 6 months. The closer the dots are to the line, the higher the correlation. Correlation over time indicates persistence or autocorrelation which indicates the presence of a unit root in the variable examined.
+
+
+As it can be seen in the lag correlation plots, the correlation of inflation in levels is persistent over 6 months. Therefore, there is a strong suggestion for the presence of unit root.
+
+```{r, warning=FALSE, message=FALSE}
+
+x = Inflation                           
+
+lag.plot(x, 6, do.lines=FALSE)
+
+```
+
+Again, as it can be from the lag correlation plots, the correlation of TCU in levels is persistent over 6 months. Therefore, there is a strong indication of the presence of unit root. 
+
+
+```{r, warning=FALSE, message=FALSE}
+
+y = TCU                             
+
+lag.plot(y, 6, do.lines=FALSE)
+
+
+```
+
+According to the lag plots of Inflation in first differences, correlation is weakened as it can be suggested that the differential of the variable eliminates the unit root.
+
+```{r, warning=FALSE, message=FALSE}
+
+w = diff(Inflation)                  
+
+lag.plot(w, 6, do.lines=FALSE)
+
+```
+
+Again, it seems that there is not a unit root in the TCU in first differences.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+z = diff(TCU)                    
+
+lag.plot(z, 6, do.lines=FALSE)
+
+```
+## ACF and PACF Plots
+
+The ACF plots examine the autocorrelation of the variables with the dashed blue lines indicating the bounds for statistical significance at the 10% level.
+
+As it can be seen in the ACF for x, Inflation in levels shows a very strong persistence in the timespan of 2 months, whereas in the ACF for w, Inflation in first differences shows a weakened persistence, reflecting the results of the Plots of the lag correlation.
+As shown in the ACF for y, TCU in levels show a strong persistence but weaker than Inflation in levels. The persistence disappears in the ACF for z, as TCU is differentiated.
+
+```{r, warning=FALSE, message=FALSE}
+
+par(mfrow=c(2,2))
+acf     (x,          main="ACF for x")
+acf     (y,          main="ACF for y")
+acf     (w,          main="ACF for w")
+acf     (z,          main="ACF for z")
+
+```
+
+The PACF plots examine the autocorrelation of the variables as does the ACF but each partial correlation controls for any correlation between observations of a shorter lag length. According to the PACF for x and y, both Inflation and TCU are autoregressive processes of order 1.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+par(mfrow=c(2,2))
+pacf    (x,          main="PACF for x")
+pacf    (y,          main="PACF for y")
+pacf    (w,          main="PACF for w")
+pacf    (z,          main="PACF for z")
+
+```
+
+TCU and Inflation are non-stationary I(1) in levels and stationary I(0) in first differences. Nevertheless, unit root test are required to confirm the graphical results of the previous plots.
+
+## ADF Test
+
+Ho: residuals have a unit root and therefore the time series is not stationary.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+max.lags = trunc(  (12 * (  (length(x)/100)^(1/4)  ) ) )
+max.lags
+x.adf.drift <- ur.df(x, selectlags="BIC", type="drift", lags=max.lags )     
+summary(x.adf.drift)
+
+```
+The test statistic of Inflation in levels is -2.79 which is less negative than the critical value at the 5% significance level (-2.86). Therefore Ho cannot be rejected.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+max.lags = trunc(  (12 * (  (length(y)/100)^(1/4)  ) ) )
+max.lags
+y.adf.drift <- ur.df(y, selectlags="BIC", type="drift", lags=max.lags )  
+summary(y.adf.drift)
+
+```
+
+The test statistic of TCU in levels -3.24 is more negative than the critical value at the 5% significance level, but less negative than the critical value at the 1% significance level. Ho can be rejected at the 5% significance level but not at the 1% significance level.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+max.lags = trunc(  (12 * (  (length(w)/100)^(1/4)  ) ) )
+max.lags
+w.adf.drift <- ur.df(w, selectlags="BIC", type="drift", lags=max.lags ) 
+summary(w.adf.drift)
+
+```
+
+The test statistic of Inflation in first differences -5.70 is more negative than the critical value at the 5% significance level. Therefore, Ho can be rejected at the 5% significance level.
+
+```{r, warning=FALSE, message=FALSE}
+
+max.lags = trunc(  (12 * (  (length(z)/100)^(1/4)  ) ) )
+max.lags
+z.adf.drift <- ur.df(z, selectlags="BIC", type="drift", lags=max.lags )     
+summary(z.adf.drift)
+
+```
+The test statistic of TCU in first differences -15.50 is more negative than the critical value at the 5% significance level. Ho can be rejected as there is evidence of no unit root in the residuals at the 5% significance level.
+
+According to the ADF tests, Inflation in levels has a unit root I(1) at the 5% significance level and does not in first differences at the 5% significance level I(0).
+On the other hand, there is evidence that TCU does not have a unit root in levels I(0) and first differences I(0) at the 5% significance level .
+ 
+The plots of the ADF results are shown below.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(x.adf.drift)
+
+```
+There is low volatility throughout the Inflation in levels residuals plot.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(y.adf.drift)
+
+```
+There is volatility in the most recent observations of the TCU in levels.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(w.adf.drift)
+
+```
+In Inflation in first differences the volatility is higher at 490 observations.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(z.adf.drift)
+
+```
+In the residuals of the TCU in first differences, there is high volatility in the most recent observations with a difference of 12% of the extremes. 
+
+## PP Test
+
+Ho: residuals have a unit root.
+
+```{r, warning=FALSE, message=FALSE}
+
+x.pp <- ur.pp(x, type="Z-tau", model="constant", lags="long") 
+summary(x.pp)
+
+```
+
+The test statistic which is -2.57 is less negative than the critical values at the 5% significance level. The series is non-stationary because the Ho cannot be rejected. the PP test just as the ADF test indicates the presence of a unit root in the inflation rate in levels.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+y.pp <- ur.pp(y, type="Z-tau", model="constant", lags="long") 
+summary(y.pp)
+
+```
+
+The test statistics -3.59 is more negative than the critical values at any significance level. Ho can be rejected at the 5% significance level as there is no evidence of a unit root in TCU in levels.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+w.pp <- ur.pp(w, type="Z-tau", model="constant", lags="long") 
+summary(w.pp)
+
+```
+
+The test statistic -16.79 is more negative than the critical value at the 5% significance level. Therefore, Ho is rejected at the 5% significance level. There is evidence to assert that the inflation rate is stationary in first differences.	
+
+
+```{r, warning=FALSE, message=FALSE}
+
+z.pp <- ur.pp(z, type="Z-tau", model="constant", lags="long") 
+summary(z.pp)
+
+```
+
+The test statistic -19.95 is more negative than the critical value at the 5% significance level. Therefore the Ho is rejected at the 5% significance level. There is evidence of the absence of a unit root in TCU in first differences.	
+
+According to the PP tests, TCU is I(0) in levels and first differences, whereas Inflation is I(1) and I(0) respectively.
+
+The plots of the PP results are shown below.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(x.pp)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(y.pp)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(w.pp)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(z.pp)
+
+```
+There is high volatility in the residuals at the end of the TCU in levels and first differences. The residuals of Inflation in levels and first differences have lower volatility.
+
+## KPSS Test
+
+Ho: residuals do not have a unit root and the time series is stationary.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+x.kpss <- ur.kpss(x, type="mu",  lags="long" )
+summary(x.kpss)
+
+```
+
+For Inflation in levels, the test statistic is 1.576 which is greater than the critical value at the 5% significance level. the Ho is rejected and the series cannot be stationary because there is a unit root. the KPSS test suggests that there is a unit root in the Inflation in levels just like the ADF and PP tests.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+y.kpss <- ur.kpss(y, type="mu",  lags="long" )
+summary(y.kpss)
+
+```
+
+The test statistic 1.451 is greater than the critical value at the 5% significance level. The Ho is rejected and the TCU in levels cannot be stationary as the test indicates the existence of a unit root in the series in levels. the KPSS confirms the results of the ADF at the 1% significance level.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+w.kpss <- ur.kpss(w, type="mu",  lags="long" )
+summary(w.kpss)
+
+```
+
+The test statistic is 0.078 which is smaller than the critical value at the 5% significance level. The Ho is not rejected as there is evidence that the series does not have a unit root and it is stationary in first differences. the KPSS test of Inflation in first differences confirms the results of the ADF and PP tests.	  
+
+
+```{r, warning=FALSE, message=FALSE}
+
+z.kpss <- ur.kpss(z, type="mu",  lags="long" )
+summary(z.kpss)
+
+```
+
+The test statistic is 0.0364 which is smaller than the critical value at the 5% level of significance. the Ho is not rejected as there is evidence just as in the ADF and PP tests that the TCU does not have a unit root in first differences. it is I(0) in first differences.
+
+According to the KPSS Inflation and TCU are I(1) in levels and I(0) in first differences at the 5% significance level.
+
+The plots of the KPSS results are shown below.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(x.kpss)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(y.kpss)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(w.kpss)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(z.kpss)
+
+```
+
+The plots are particularly useful in showing that the trend of Inflation and TCU is a random walk with drift, whch was accounted for by choosing to run the models with a constant.
+
+# Cointegration Analysis
+
+As the unit root tests results are inconclusive in levels at the 5% significance level, but both series are I(0) in first differences, they might be cointegrated. Therefore it is necessary to find a linear combination of the inflation rate and the TCU, through the gap between the two series, whose stationary residual would suggest cointegration.
+
+
+## Engle-Granger Methodology
+
+Ho: no cointegration
+
+```{r, warning=FALSE, message=FALSE}
+
+coint.test(Inflation, TCU,           d = 0, nlag = NULL, output = TRUE)                   
+
+```
+
+There is no evidence of cointegration at the 5% significance level. Indeed cointegration is reported only at the 8% level (p value=0.0876).
+Ho cannot be rejected at the 5% significance level.
+
+Inflation and TCU seem to not be cointegrated in levels at the 5% significance level. The results are compared with the Johansen test for further evidence.
+
+
+## Johansen Test
+
+Ho: no cointegration vector.
+
+The Johnasen test requires the computation of the optimal number of lags in levels.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+VARselect(data.set, lag.max=10, type="const", season = NULL, 
+exogen = NULL)$selection	  
+
+
+```
+
+The optimal number of lags is equal to 2.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+optimal.lags = 2
+
+johansen.const = ca.jo(data.set, type="eigen", ecdet="const",  
+K = optimal.lags, spec="longrun")
+	summary(johansen.const)
+
+```
+
+The test statistic 19.75 is greater than the critical value 15.67 at the 5% significance level. Ho can be rejected at the 5% significance level as there is evidence of a cointegrating vector. However, Ho is also rejected when
+the rank of the pi matrix is equal to 1, which is logically impossible as the variables are 2. 
+
+```{r, warning=FALSE, message=FALSE}
+
+johansen.const = ca.jo(data.set, type="trace", ecdet="const",  
+K = optimal.lags, spec="longrun")
+	summary(johansen.const)
+
+```
+
+The test statistic 33.44 is greater than the critical value 19.96 at the 5% significance level. Ho is rejected. there is an indication of cointegration at the 5% significance level. However, the same problem as above persists and the trace test is not meaningful in establishing correlation.
+
+The cointegration relation seems to be stationary for TCU but not for Inflation. The ambiguity of the ADF test is shown in the Johansen test which derives from it.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(johansen.const)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+plotres(johansen.const)
+
+```
+
+The results of the Johansen tests are ambiguous. Indeed, Inflation and TCU seem to not be cointegrated in levels.
+Furthermore the residuals from the tests do not appear to be well behaved.
+
+
+# ARDL
+
+## Dataset in Levels for the ARDL
+
+
+```{r, warning=FALSE, message=FALSE}
+
+library(dynamac)          
+
+CPI = pdfetch_FRED("CPIAUCSL")
+names(CPI) = "CPI"
+
+Inflation = diff(log(CPI), lag = 12) * 100                       
+names(Inflation) = "Inflation"
+
+Inflation = ts(Inflation, start=c(1947, 1), frequency=12)         
+Inflation = na.omit(Inflation)
+
+TCU = pdfetch_FRED("TCU")
+names(TCU) = "TCU"
+TCU = ts(TCU, start=c(1967, 1), frequency=12)
+
+data.set = na.omit(
+           ts.intersect(
+
+	   Inflation,
+	   TCU, 
+
+           dframe=TRUE))
+
+
+Inflation   = ts( data.set$Inflation,    start=c(1967, 1),  frequency=12)
+TCU         = ts( data.set$TCU,          start=c(1967, 1),  frequency=12)
+
+
+```
+
+The dependent variable is TCU, whereas Inflation is the independent variable because the model is computing the impact of Inflation on the TCU, as stated in the introduction.
+The model is run in error correction, i.e. TCU is a difference. 
+
+
+```{r, warning=FALSE, message=FALSE}
+
+
+set.seed(123)
+
+lags = 2      
+
+ARDL = dynardl(	
+                      TCU ~ Inflation,                                               
+                                                                                         
+                lags = list("Inflation" = 1,          "TCU" = 1             ),           
+               diffs =    c("Inflation"                                     ),       
+            lagdiffs = list("Inflation" = c(1:lags),  "TCU" = c(1:lags)     ),           
+	
+                  ec = TRUE,                
+            constant = TRUE,
+               trend = FALSE,
+
+            simulate = FALSE,              
+            shockvar = "Inflation",      
+               range = 50,
+                sims = 1000,       
+            fullsims = TRUE,
+
+                data = data.set)
+
+
+summary(ARDL)
+
+```
+
+The r-squared is 0.1266 (not very high), indicating that the model with the current variables is not a good fit.
+
+## PSS Test
+
+```{r, warning=FALSE, message=FALSE}
+
+pssbounds(ARDL)
+
+```
+According to the PSS test, the long-run relationship is statistically significant because the F-statistic 7.9 is greater than the critical value at the 1% significance level.
+the Ho of no long-run relationship is rejected according to the F test at the 1% significance level because the lagged levels are statistically significant.
+
+```{r, warning=FALSE, message=FALSE}
+
+pssbounds(ARDL, restriction=TRUE) 
+
+```
+According to another version of the PSS test, the F statistic is only lower than the critical value at the 1% significance level. the Ho is not rejected at the 1% significance level but it is rejected at the 5% significance level.
+
+## Diagnostic checks 
+
+The following procedure examines the behaviour of the residuals in the model.
+
+```{r, warning=FALSE, message=FALSE}
+
+dynardl.auto.correlated(ARDL) 
+
+```
+
+According to the Breusch-Godfrey test the residuals are not autocorrelated, the p-value of 0.153 cannot reject the Ho of no autocorrelation at the 5% significance level.
+According to the Shapiro-Wilk test, the residuals are not normally distributed. The Ho of normal distribution is rejected because the p-value equals 0.
+
+The following plots allow for a graphical interpretation of the results.
+
+```{r, warning=FALSE, message=FALSE}
+
+ARDL.residuals =    ARDL$model$residuals
+ARDL.residuals = ts(ARDL$model$residuals,  start=c(1967, 1) ,  frequency=1)
+
+
+
+  par(mfrow = c(2, 2))
+      plot( ARDL.residuals )                 
+    abline( h=0, col="red" )
+      hist( ARDL.residuals, col="orange")  
+       acf( ARDL.residuals )                 
+      pacf( ARDL.residuals )                 
+
+```
+
+As it can be inferred from the histogram and residulas plot, the distribution is left skewed with a very long negative spike on the right side. The ACF and PACF indicate no serial correlation in the residuals.
+The plots confirm the results of the Shapiro-Wilk and Breusch-Godfrey tests.
+
+More tests are conducted to to strengthen the evidence collected so far on the residuals.
+
+```{r, warning=FALSE, message=FALSE}
+
+jarque.bera.test(ARDL.residuals)      
+
+```
+
+According to the Jarque-Bera test, the Ho of normality is rejected at the 1% significance level, becuase the p value is 0.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+
+bptest(ARDL$model)                   
+
+
+```
+
+According to the Breusch-Pagan test, the Ho of no heteroskedasticity is rejected at the 1% significance level, because the p value is 0.
+
+
+The next procedure corrects for the errors encountered in tests.
+
+```{r, warning=FALSE, message=FALSE}
+
+coeftest(ARDL$model, vcov.=NULL   )   
+
+```
+
+These standard errors are not corrected for autocorrelation and heteroskedasticity, therefore they are not robust.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+coeftest(ARDL$model, vcov.=vcovHC )  
+
+```
+
+Standard errors are greater and t values are lower when heteroskedasticity is corrected. The regressors are less significant.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+coeftest(ARDL$model, vcov.=vcovHAC)   
+
+```
+
+Standard errors are corrected for autocorrelation as well. The standard error is greater, the t value is lower and therefore the significance is lower than test without robust errors. 
+
+## IRFs
+
+The model is run with robust errors to plot the IRFs for the bootstrapped confidence interval over 50 months, with the exogenous shock coming from Inflation.
+The IRFs are the response resulting from external shocks exerted onto the system, causing a change in the error term.
+
+```{r, warning=FALSE, message=FALSE}
+
+ARDL = dynardl(	
+                      TCU ~ Inflation,                                                
+                                                                                          
+                lags = list("Inflation" = 1,          "TCU" = 1             ),           
+               diffs =    c("Inflation"                                     ),           
+            lagdiffs = list("Inflation" = c(1:lags),  "TCU" = c(1:lags)     ),            
+	
+                  ec = TRUE,                
+            constant = TRUE,
+               trend = FALSE,
+
+            simulate = TRUE,             
+            shockvar = "Inflation",      
+               range = 50,
+                sims = 1000,      
+            fullsims = TRUE,
+
+                data = data.set)
+
+
+summary(ARDL)
+
+```
+According to the coefficients of the model, in explaining the current value TCU, the differenced first lag of Inflation is significant at the 0.1 % level and has a positive impact on TCU. Therefore the IRFs are expected to show an increase in TCU after a shock of one unit to Inflation.
+
+```{r, warning=FALSE, message=FALSE}
+
+dynardl.all.plots(ARDL)
+
+```
+The cumulative change in the dependent variable indicates that the cumulative imapact is positive on the TCU rate.
+Indeed, when Inflation increases, the TCU rate tends to increase as well. 
+After 1 year, TCU increases by 1 p.p after a shock of one unit to Inflation. Afterwards, TCU exhibits a downward trend.
+
+In conclusion, The ARDL model confirms the argument constructed at the beginning of the project. Nevertheless, with only the TCU and Inflation is not correctly specified because the R-squared is really low and the residuals are not white noise i.e. not well behaved.
+When the optimal lag is 2, the residuals present heteroskedasticity, no serial correlation and are not normally distributed.
+When the number of lags is increased the serial correlation increases in significance, cointegration improves in lag = 3 but lessens in significance in lag = 4.
+The main reason for the model not being correctly specifified due to the residuals not well behaving is the necessity to complement Inflation with more variables to predict the behaviour of TCU such as infomation on GDP growth rate to control for business cycles, exchnage rate, and the rate of unemployment.
+      
+
+
+#  Bivariate VAR Model
+
+
+The ARDL model was not correctly specified, most likely because it required more explanatory variables.
+The residuals of the ARDL model could not completely become well behaved by simply increasing the number of lags.
+In the ARDL model the variables on the right hand side must be exogeneous, but it is very difficult to apply such analysis in reality.
+The VAR model attempts to overcome the ubiquitous endogeneity problem by treating all the variables in the model as endogeneous to one another.
+The VAR in levels is not meaningful because the variables are assumed to have a unit root in levels. Indeed the Granger-causality test is an F test and unit roots imapact on its significance.
+As there is no evidence of cointegration and the variables are non-stationary in levels, it is necessary to run a VAR model in first differences.
+Furthermore, the model is meaningful only if the residuals are well behaved.
+
+
+
+
+## Dataset in First Differences for VAR Model
+
+The first step to compute the model is the creation of a dataset in first differences.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+CPI = pdfetch_FRED("CPIAUCSL")
+names(CPI) = "CPI"
+
+Inflation = diff(log(CPI), lag = 12) * 100                      
+names(Inflation) = "Inflation"
+
+Inflation = ts(Inflation, start=c(1947, 1), frequency=12)         
+Inflation = na.omit(Inflation)
+
+TCU = pdfetch_FRED("TCU")
+names(TCU) = "TCU"
+TCU = ts(TCU, start=c(1967, 1), frequency=12)
+
+
+Inflation    =  diff(Inflation)
+TCU          =  diff(TCU)
+
+
+
+data.set = na.omit(
+           ts.intersect(
+
+	   Inflation,
+	   TCU, 
+
+           dframe=TRUE))
+
+
+Inflation   = ts( data.set$Inflation,    start=c(1967, 2),  frequency=12)
+TCU         = ts( data.set$TCU,          start=c(1967, 2),  frequency=12)
+
+  data.set = ts(data.set, start=c(1967, 2), frequency=12)   
+
+```
+
+## Optimal Lag Selection in first differences
+
+The second step requires obtaining the optimal number of lags for the variables in first differences.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+VARselect(data.set, lag.max=10, type="const", 
+season = NULL, exogen = NULL)$selection	  
+
+```
+## VAR Model results
+
+The optimal number of lags in first differences is 1.
+
+The model is run through equations in the reduced form VAR, estimated using OLS.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+optimal.lags = 1 
+
+
+var.model.const  <- VAR(data.set, p=optimal.lags, type="const", exogen=NULL)
+summary(var.model.const)
+
+```
+
+According to the coefficients of the model, in explaining the current value TCU, the first lag of Inflation is significant at the 5% level. Indeed, the first lag of Inflation has a positive impact on the TCU. Therefore, the cumulative and non-cumulative IRFs are expected to show an increase in TCU after a shock of one unit to Inflation. Nevertheless, the R-squared is very close to 0, thus the model is not correctly specified because it does not explain any of the variations in the response variable around its mean.
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(var.model.const)
+
+
+```
+
+In the plots the blue line is the outcome of the model (the fit), whereas the black line are the residuals. It can be inferred from the ACF and PACF plots that there is no persistence in the residuals.
+
+## Granger-causality Test with Robust Errors
+
+The Granger-causality test will be run in both directions of Granger-causality using a robust heteroskedasticity variance-covariance matrix for the Granger test, i.e. correcting for the errors.
+The robust standard errors are probably going to be larger than the previous standard errors. The t values and f test statistic are probably going to be lower and increase the p value of the GC test.
+
+```{r, warning=FALSE, message=FALSE}
+
+causality(var.model.const, cause="Inflation", boot=FALSE, boot.runs=1000, 
+vcov.=vcovHC(var.model.const))
+
+```
+
+The p-value is 0.099. The test is not significant at the 5% level, but there is evidence of Granger-causality from Inflation to TCU at 10% significance level.
+
+```{r, warning=FALSE, message=FALSE}
+
+causality(var.model.const, cause="TCU", boot=FALSE, boot.runs=1000, 
+vcov.=vcovHC(var.model.const))
+
+```
+the p value is 0.3067. When robust standard errors are used there is no evidence of Granger-causality from the TCU to Inflation not even at the 10% significance level.
+
+GC causality is appliable only from Inflation to TCU. Therefore, the null hypothesis of the ARDL model is retrieved from the evidence.
+
+## Cholesky decompositions for orthogonal errors
+
+
+The test will be constructed following the results of the Granger-causality tests, therefore the ordering is from Inflation to TCU.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+ordered.data.set = data.set[, c("Inflation","TCU")]
+
+var.ordered.const  <- VAR(ordered.data.set,  p=optimal.lags,  
+type="const",   exogen=NULL)
+
+```
+
+
+The next stage of the project is the construction of the non-cumulative IRFs plot Using ordered VAR.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+plot(irf(var.ordered.const, n.ahead=20, ortho=TRUE, cumulative=FALSE, 
+boot=TRUE, ci=0.90, runs=100))
+
+plot(irf(var.ordered.const,  impulse="Inflation", response="TCU", n.ahead=20, 
+ortho=TRUE, cumulative=FALSE, boot=TRUE, ci=0.90, runs=100, seed=NULL),
+			main="Inflation to TCU", xlab="Lag", ylab="", sub="", oma=c(3,0,3,0))
+
+```
+
+The relationship of the non cumulative function is expositive because TCU remains inside the red lines and therefore when impulsed by Inflation it is well behaving. 
+The IRFs converge to 0 over time, as expected, because unit roots are absent in the model. 
+
+The next stage of the project is the construction of the cumulative IRFs plot Using ordered VAR.
+ 
+```{r, warning=FALSE, message=FALSE}
+
+plot(irf(var.ordered.const, n.ahead=20, ortho=TRUE, cumulative=TRUE, boot=TRUE, 
+ci=0.90, runs=100))
+
+plot(irf(var.ordered.const,  impulse="Inflation", response="TCU", n.ahead=20, 
+ortho=TRUE, cumulative=TRUE, boot=TRUE, ci=0.90, runs=100, seed=NULL),
+			main="Inflation to TCU", xlab="Lag", ylab="", sub="", oma=c(3,0,3,0))
+
+```
+
+The relationship of the cumulative function is expositive because TCU remains inside the red lines and therefore when impulsed by Inflation it is well behaving. 
+The IRFs do not converge to 0 over time and the impulse is positive as expected.
+
+## Diagnostic Checks
+
+The graphical evidence of the IRFs suggest that the residuals are well behaving. However, the evidence needs to be tested.
+The various autocorrelation tests are shown below.
+
+```{r, warning=FALSE, message=FALSE}
+
+serialtest <- serial.test(var.model.const, type = "PT.asymptotic")
+serialtest
+
+```
+According to the first test, there is evidence of autocorrelation as the p value is 0.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+serialtest <- serial.test(var.model.const, type = "PT.adjusted")
+serialtest
+
+```
+
+According to the second test, there is evidence of autocorrelation as the p value is 0.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+serialtest <- serial.test(var.model.const, type = "BG")
+serialtest
+
+```
+According to the third test, there is evidence of no autocorrelation as the p value is 0.079.
+
+```{r, warning=FALSE, message=FALSE}
+
+serialtest <- serial.test(var.model.const, type = "ES")
+serialtest
+
+```
+According to the fourth test, there is evidence of no autocorrelation as the p value is 0.081.
+
+
+The normality tests are shown below.
+
+```{r, warning=FALSE, message=FALSE}
+
+normalitytest <- normality.test(var.ordered.const)
+normalitytest
+
+```
+According to the test, the residuals are not normally distributed as the p-value is equal to 0.
+
+In conclusion there is evidence of the residuals not being autocorrelated but they are not normally distributed.
+The residuals behave moderately well but the VAR model, as the ARDL model, is not correctly specified.
+
+## VAR Model Forecast
+
+Finally, the VAR model is used to construct an out of sample prediction on the next 10 months. 
+
+
+```{r, warning=FALSE, message=FALSE}
+
+var.prd.const <- predict(var.model.const, n.ahead = 10, ci = 0.95)
+plot(var.prd.const)
+
+```
+The blue line is the prediction for the 10 months ahead and the red line is the 95% bootsrapped confidence interval
+Both Inflation and TCU exhibit a downward forecasted trend, with the former being more emphatic than the latter.
+
+
+# ARIMA Model for Forecasting
+
+The models seen so far use at least 2 values. Contrary, the ARIMA model uses only one variable, modelled in relation to its past behaviour.
+The purpose of the model is not to identify causality. Indeed, it is used to identify how one variable can predict itself in the future.
+Therefore, the ARIMA model is used for constructing a prediction not establishing causality, through the Auto Regressive and Moving Average components.
+
+## Dataset in Levels for ARIMA
+
+The first step is the creation of the dataset in levels.
+
+```{r, warning=FALSE, message=FALSE}
+
+CPI = pdfetch_FRED("CPIAUCSL")
+names(CPI) = "CPI"
+
+Inflation = diff(log(CPI), lag = 12) * 100                      
+names(Inflation) = "Inflation"
+
+Inflation = ts(Inflation, start=c(1947, 1), frequency=12)         
+Inflation = na.omit(Inflation)
+
+TCU = pdfetch_FRED("TCU")
+names(TCU) = "TCU"
+TCU = ts(TCU, start=c(1967, 1), frequency=12)
+
+
+data.set = na.omit(
+           ts.intersect(
+
+	   Inflation,
+	   TCU, 
+
+           dframe=TRUE))
+
+
+Inflation   = ts( data.set$Inflation,    start=c(1967, 1),  frequency=12)
+TCU         = ts( data.set$TCU,          start=c(1967, 1),  frequency=12)
+
+
+
+data.set = ts(data.set, start=c(1967, 1), frequency=12)   
+
+```
+## ARIMA model selection
+
+The model will predict the behaviour of Inflation becuase as shown in the previous procedures, it is more likely that TCU is adapting to it than the reverse.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+x = Inflation
+
+   arima.model = forecast::auto.arima(x,
+	
+                                  D = 1,
+                         stationary = FALSE,
+                                 ic = c("aicc", "aic", "bic"),
+                           stepwise = FALSE,
+                      approximation = FALSE,
+                           seasonal = TRUE,
+                         allowdrift = TRUE   ) 
+
+
+arima.model
+
+```
+
+The best model for predicting the trend of Inflation is ARIMA (2,0,0) (2,1,0) [12]. The model is AR(2) therefore the current value is based on the previous 2 values. Also, the best model is in levels and does not rely on the moving average of past forecasting errors, MA(0).
+
+## ARIMA Forecast
+
+The model forecasts the behaviour of Inflation in the next 10 months.
+
+```{r, warning=FALSE, message=FALSE}
+
+ARIMA.forecast = forecast::forecast(arima.model, h = 10)
+
+plot(ARIMA.forecast)
+
+```
+The forecast is the blue line, the shadows are the confidence intervals.
+The model predicts that in the next 10 months the inflation rate will decrease, but the confidence intervals are really wide. 
+
+## SARIMA forecast
+
+The prediction of the ARIMA model could not be meaningful because the model is subject to seasonal dummies. Therefore the SARIMA model is computed for a within sample forecast of 10 months.
+The time series is predicted as if it were the future.                       
+
+```{r, warning=FALSE, message=FALSE}
+
+
+library(smooth)
+
+sarima.model = smooth::msarima(x, orders=list(
+
+                                               ar = c(2,2),
+                                                i = c(0,1),
+                                               ma = c(1,0)),
+                                             lags = c(1,12),
+                                                h = 10,        
+                                          holdout = TRUE)
+
+sarima.model
+
+```
+
+The estimated SARIMA model is (2,0,1)[1] (2,1,0) [12]. In comparison to the ARIMA model, the MA component is 1, not 0.
+
+
+```{r, warning=FALSE, message=FALSE}
+
+
+summary(sarima.model)
+
+values = sarima.model
+
+greybox::graphmaker(x,values$forecast,values$fitted,values$lower,values$upper,
+level=0.95,legend=TRUE)
+
+
+```
+
+According to the forecast, inflation should have decreased in the last 10 months but instead, as it can be inferred from the present values, it has increased. The SARIMA model could not reliably predict the future, thus the ARIMA model is prone to serious inadequacy and might not be meaningful.
+
+
+
+# conclusion
+
+The project analysed the significance of causality from Inflation to TCU. The variables appeared to be I(1) in levels and I(0) in first differences. However, the unit root tests results are conflicting as TCU is I(0) in levels and in first differences at the 5% significance level, according to the ADF and PP tests. Nevertheless, both series are I(0) in levels, and for practicality, it was assumed that they are I(1) in levels. As the results of the cointegration tests were ambiguous, it was assumed that there is no long-run relationship between the two variables. The ARDL model was not correctly specified but the PSS tests indicated a long-run relationship at the 5% significance level from Inflation to TCU, and a positive impact could be inferred from the IRFs. Following the results of the project the VAR model was computed and the Granger-causality test indicated a Granger-causality at the 10% significance level from Inflation to TCU. The VAR IRFs were computed and again TCU seemed to be impacted by a shock from Inflation. A VAR forecast was constructed, showing a decrease in Inflation in the next 10 months. Nevertheless, the residuals of the VAR model were not normally distributed and the R-squared was too low. Finally, the ARIMA forecast was constructed and compared to the SARIMA forecast. The ARIMA model predicts a decreasing Inflation in the next 10 months, but the SARIMA could not predict the past behaviour of inflation and therefore, the ARIMA model appears to be inadequate for Inflation forecasting. The results of the project are not adequate to accurately assess the significance of causality from Inflation to TCU. Further research is required for meaningful results.
+
+
+
+
